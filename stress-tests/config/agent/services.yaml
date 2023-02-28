@@ -1,0 +1,11 @@
+agentInfo:
+  annotations:
+    description: traffic generator
+outgoingServices:
+  - name: traffic
+    type: traffic
+    enabled: true
+    config:
+      url: http://localhost:8100
+    annotations:
+      description: Traffic Generator
