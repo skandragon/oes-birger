@@ -18,10 +18,13 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/OpsMx/go-app-base/version"
 	"github.com/go-resty/resty/v2"
@@ -29,15 +32,16 @@ import (
 )
 
 var (
-	certFile      = flag.String("certFile", "control-cert.pem", "The file containing the certificate used to connect to the controller")
-	keyFile       = flag.String("keyFile", "control-key.pem", "The file containing the certificate used to connect to the controller")
-	caCertFile    = flag.String("caCertFile", "ca-cert.pem", "The file containing the CA certificate we will use to verify the controller's cert")
-	url           = flag.String("url", "https://forwarder-controller:9003", "The URL of the controller's control endpoint")
-	endpointName  = flag.String("name", "", "Item name")
-	agentIdentity = flag.String("agent", "", "agent name")
-	endpointType  = flag.String("type", "", "endpoint type")
 	action        = flag.String("action", "", "action, one of: kubectl, agent-manifest, service, or control")
+	agentIdentity = flag.String("agent", "", "agent name")
+	caCertFile    = flag.String("caCertFile", "ca-cert.pem", "The file containing the CA certificate we will use to verify the controller's cert")
+	certFile      = flag.String("certFile", "control-cert.pem", "The file containing the certificate used to connect to the controller")
+	endpointName  = flag.String("name", "", "Item name")
+	endpointType  = flag.String("type", "", "endpoint type")
+	keyFile       = flag.String("keyFile", "control-key.pem", "The file containing the certificate used to connect to the controller")
+	outputFile    = flag.String("output-file", "", "The filename to write the full URL for this service.  Only valid for 'service' actions.")
 	showversion   = flag.Bool("version", false, "show the version and exit")
+	url           = flag.String("url", "https://forwarder-controller:9003", "The URL of the controller's control endpoint")
 )
 
 func usage(message string) {
@@ -46,10 +50,10 @@ func usage(message string) {
 	}
 	flag.Usage()
 	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "  'kubectl' requires: agent, endpointName.\n")
-	fmt.Fprintf(os.Stderr, "  'service' requires: agent, endpointType, endpointName.\n")
 	fmt.Fprintf(os.Stderr, "  'agent-manifest' requires: agent.\n")
 	fmt.Fprintf(os.Stderr, "  'control' requires no other options.\n")
+	fmt.Fprintf(os.Stderr, "  'kubectl' requires: agent, endpointName.\n")
+	fmt.Fprintf(os.Stderr, "  'service' requires: agent, endpointType, endpointName.\n")
 	os.Exit(-1)
 }
 
@@ -101,6 +105,12 @@ func getAgentManifest() {
 	fmt.Printf("%s\n", string(resp.Body()))
 }
 
+func check(err error) {
+	if err != nil {
+		log.Fatalf("fatal: %v", err)
+	}
+}
+
 func getService() {
 	request := fwdapi.ServiceCredentialRequest{
 		AgentName: *agentIdentity,
@@ -118,7 +128,35 @@ func getService() {
 	if resp.StatusCode() != 200 {
 		log.Fatalf("Request failed: %s", resp.Status())
 	}
-	fmt.Printf("%s\n", string(resp.Body()))
+	if *outputFile == "" {
+		fmt.Printf("%s\n", string(resp.Body()))
+	} else {
+		var f io.WriteCloser
+		f, err = os.Create(*outputFile)
+		check(err)
+		defer f.Close()
+		check(writeToFile(f, resp.Body()))
+	}
+}
+
+func writeToFile(f io.Writer, sj []byte) error {
+	var config fwdapi.ServiceCredentialResponse
+	if err := json.Unmarshal(sj, &config); err != nil {
+		return err
+	}
+	if config.CredentialType != "basic" {
+		return fmt.Errorf("unsupported credential URL type %s, expected 'basic'", config.CredentialType)
+	}
+	creds, ok := config.Credential.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("Cannot cast to basic credential")
+	}
+	items := strings.SplitN(config.URL, ":", 2)
+	username := creds["username"].(string)
+	password := creds["password"].(string)
+	target := items[0] + "://" + username + ":" + password + "@" + items[1][2:]
+	fmt.Fprintln(f, target)
+	return nil
 }
 
 func getControl() {
