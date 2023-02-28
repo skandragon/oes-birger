@@ -263,31 +263,36 @@ func handleHTTPControl(agentName string, in *tunnel.MessageWrapper, httpids *uti
 			dataflow <- tunnel.MakeBadGatewayResponse(req.Id)
 		}
 	case *tunnel.HttpTunnelControl_HttpTunnelResponse:
-		resp := controlMessage.HttpTunnelResponse
-		httpids.Lock()
-		dest := httpids.FindUnlocked(resp.Id)
-		if dest != nil {
-			dest <- in
-			if resp.ContentLength == 0 {
-				httpids.RemoveUnlocked(resp.Id)
+		func() {
+			resp := controlMessage.HttpTunnelResponse
+			httpids.Lock()
+			defer httpids.Unlock()
+			dest := httpids.FindUnlocked(resp.Id)
+			if dest != nil {
+				dest <- in
+				if resp.ContentLength == 0 {
+					httpids.RemoveUnlocked(resp.Id)
+				}
+			} else {
+				zap.S().Warnf("Got response to unknown HTTP request id %s", resp.Id)
 			}
-		} else {
-			zap.S().Warnf("Got response to unknown HTTP request id %s", resp.Id)
-		}
-		httpids.Unlock()
+		}()
 	case *tunnel.HttpTunnelControl_HttpTunnelChunkedResponse:
-		resp := controlMessage.HttpTunnelChunkedResponse
-		httpids.Lock()
-		dest := httpids.FindUnlocked(resp.Id)
-		if dest != nil {
-			dest <- in
-			if len(resp.Body) == 0 {
-				httpids.RemoveUnlocked(resp.Id)
+		func() {
+			resp := controlMessage.HttpTunnelChunkedResponse
+			httpids.Lock()
+			defer httpids.Unlock()
+			dest := httpids.FindUnlocked(resp.Id)
+			if dest != nil {
+				dest <- in
+				if len(resp.Body) == 0 {
+					httpids.RemoveUnlocked(resp.Id)
+					zap.S().Infow("Wrote data to client", "responseId", resp.Id, "length", len(resp.Body))
+				}
+			} else {
+				zap.S().Debugf("Got response to unknown HTTP request id %s", resp.Id)
 			}
-		} else {
-			zap.S().Debugf("Got response to unknown HTTP request id %s", resp.Id)
-		}
-		httpids.Unlock()
+		}()
 	case nil:
 		return
 	default:
