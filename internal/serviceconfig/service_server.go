@@ -293,8 +293,8 @@ func handleTunnelControl(ep tunnelroute.Search, state *apiHandlerState, tunnelCo
 			state.cleanClose.Set()
 			return true
 		}
-	case *tunnel.HttpTunnelControl_HttpTunnelChunkedResponse:
-		resp := controlMessage.HttpTunnelChunkedResponse
+	case *tunnel.HttpTunnelControl_Data:
+		resp := controlMessage.Data
 		if !state.seenHeader {
 			zap.S().Warnf("got ChunkedResponse before HttpResponse")
 			w.WriteHeader(http.StatusBadGateway)

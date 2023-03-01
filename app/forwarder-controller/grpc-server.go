@@ -277,9 +277,9 @@ func handleHTTPControl(agentName string, in *tunnel.MessageWrapper, httpids *uti
 				zap.S().Warnf("Got response to unknown HTTP request id %s", resp.Id)
 			}
 		}()
-	case *tunnel.HttpTunnelControl_HttpTunnelChunkedResponse:
+	case *tunnel.HttpTunnelControl_Data:
 		func() {
-			resp := controlMessage.HttpTunnelChunkedResponse
+			resp := controlMessage.Data
 			httpids.Lock()
 			defer httpids.Unlock()
 			dest := httpids.FindUnlocked(resp.Id)

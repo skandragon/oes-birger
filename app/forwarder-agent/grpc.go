@@ -214,8 +214,8 @@ func handleHTTPControl(in *tunnel.MessageWrapper, httpids *util.SessionList, end
 			zap.S().Debugf("Got response to unknown HTTP request id %s", resp.Id)
 		}
 		httpids.Unlock()
-	case *tunnel.HttpTunnelControl_HttpTunnelChunkedResponse:
-		resp := controlMessage.HttpTunnelChunkedResponse
+	case *tunnel.HttpTunnelControl_Data:
+		resp := controlMessage.Data
 		httpids.Lock()
 		dest := httpids.FindUnlocked(resp.Id)
 		if dest != nil {

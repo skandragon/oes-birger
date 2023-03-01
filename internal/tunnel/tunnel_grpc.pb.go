@@ -23,6 +23,15 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AgentTunnelServiceClient interface {
 	EventTunnel(ctx context.Context, opts ...grpc.CallOption) (AgentTunnelService_EventTunnelClient, error)
+	// initial handshake
+	SendHello(ctx context.Context, in *Hello, opts ...grpc.CallOption) (*HelloResponse, error)
+	// keep alive
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
+	// http data
+	SendHeaders(ctx context.Context, in *HttpTunnelResponse, opts ...grpc.CallOption) (*SendHeadersResponse, error)
+	SendData(ctx context.Context, in *Data, opts ...grpc.CallOption) (*SendDataResponse, error)
+	ReceiveHeaders(ctx context.Context, in *HttpTunnelResponse, opts ...grpc.CallOption) (*ReceiveHeadersResponse, error)
+	ReceiveData(ctx context.Context, in *ReceiveDataRequest, opts ...grpc.CallOption) (*Data, error)
 }
 
 type agentTunnelServiceClient struct {
@@ -64,11 +73,74 @@ func (x *agentTunnelServiceEventTunnelClient) Recv() (*MessageWrapper, error) {
 	return m, nil
 }
 
+func (c *agentTunnelServiceClient) SendHello(ctx context.Context, in *Hello, opts ...grpc.CallOption) (*HelloResponse, error) {
+	out := new(HelloResponse)
+	err := c.cc.Invoke(ctx, "/tunnel.AgentTunnelService/SendHello", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentTunnelServiceClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
+	out := new(PingResponse)
+	err := c.cc.Invoke(ctx, "/tunnel.AgentTunnelService/Ping", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentTunnelServiceClient) SendHeaders(ctx context.Context, in *HttpTunnelResponse, opts ...grpc.CallOption) (*SendHeadersResponse, error) {
+	out := new(SendHeadersResponse)
+	err := c.cc.Invoke(ctx, "/tunnel.AgentTunnelService/SendHeaders", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentTunnelServiceClient) SendData(ctx context.Context, in *Data, opts ...grpc.CallOption) (*SendDataResponse, error) {
+	out := new(SendDataResponse)
+	err := c.cc.Invoke(ctx, "/tunnel.AgentTunnelService/SendData", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentTunnelServiceClient) ReceiveHeaders(ctx context.Context, in *HttpTunnelResponse, opts ...grpc.CallOption) (*ReceiveHeadersResponse, error) {
+	out := new(ReceiveHeadersResponse)
+	err := c.cc.Invoke(ctx, "/tunnel.AgentTunnelService/ReceiveHeaders", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentTunnelServiceClient) ReceiveData(ctx context.Context, in *ReceiveDataRequest, opts ...grpc.CallOption) (*Data, error) {
+	out := new(Data)
+	err := c.cc.Invoke(ctx, "/tunnel.AgentTunnelService/ReceiveData", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentTunnelServiceServer is the server API for AgentTunnelService service.
 // All implementations must embed UnimplementedAgentTunnelServiceServer
 // for forward compatibility
 type AgentTunnelServiceServer interface {
 	EventTunnel(AgentTunnelService_EventTunnelServer) error
+	// initial handshake
+	SendHello(context.Context, *Hello) (*HelloResponse, error)
+	// keep alive
+	Ping(context.Context, *PingRequest) (*PingResponse, error)
+	// http data
+	SendHeaders(context.Context, *HttpTunnelResponse) (*SendHeadersResponse, error)
+	SendData(context.Context, *Data) (*SendDataResponse, error)
+	ReceiveHeaders(context.Context, *HttpTunnelResponse) (*ReceiveHeadersResponse, error)
+	ReceiveData(context.Context, *ReceiveDataRequest) (*Data, error)
 	mustEmbedUnimplementedAgentTunnelServiceServer()
 }
 
@@ -78,6 +150,24 @@ type UnimplementedAgentTunnelServiceServer struct {
 
 func (UnimplementedAgentTunnelServiceServer) EventTunnel(AgentTunnelService_EventTunnelServer) error {
 	return status.Errorf(codes.Unimplemented, "method EventTunnel not implemented")
+}
+func (UnimplementedAgentTunnelServiceServer) SendHello(context.Context, *Hello) (*HelloResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendHello not implemented")
+}
+func (UnimplementedAgentTunnelServiceServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedAgentTunnelServiceServer) SendHeaders(context.Context, *HttpTunnelResponse) (*SendHeadersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendHeaders not implemented")
+}
+func (UnimplementedAgentTunnelServiceServer) SendData(context.Context, *Data) (*SendDataResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendData not implemented")
+}
+func (UnimplementedAgentTunnelServiceServer) ReceiveHeaders(context.Context, *HttpTunnelResponse) (*ReceiveHeadersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReceiveHeaders not implemented")
+}
+func (UnimplementedAgentTunnelServiceServer) ReceiveData(context.Context, *ReceiveDataRequest) (*Data, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReceiveData not implemented")
 }
 func (UnimplementedAgentTunnelServiceServer) mustEmbedUnimplementedAgentTunnelServiceServer() {}
 
@@ -118,13 +208,146 @@ func (x *agentTunnelServiceEventTunnelServer) Recv() (*MessageWrapper, error) {
 	return m, nil
 }
 
+func _AgentTunnelService_SendHello_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Hello)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentTunnelServiceServer).SendHello(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tunnel.AgentTunnelService/SendHello",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentTunnelServiceServer).SendHello(ctx, req.(*Hello))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentTunnelService_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentTunnelServiceServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tunnel.AgentTunnelService/Ping",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentTunnelServiceServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentTunnelService_SendHeaders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HttpTunnelResponse)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentTunnelServiceServer).SendHeaders(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tunnel.AgentTunnelService/SendHeaders",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentTunnelServiceServer).SendHeaders(ctx, req.(*HttpTunnelResponse))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentTunnelService_SendData_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Data)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentTunnelServiceServer).SendData(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tunnel.AgentTunnelService/SendData",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentTunnelServiceServer).SendData(ctx, req.(*Data))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentTunnelService_ReceiveHeaders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HttpTunnelResponse)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentTunnelServiceServer).ReceiveHeaders(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tunnel.AgentTunnelService/ReceiveHeaders",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentTunnelServiceServer).ReceiveHeaders(ctx, req.(*HttpTunnelResponse))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentTunnelService_ReceiveData_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReceiveDataRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentTunnelServiceServer).ReceiveData(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tunnel.AgentTunnelService/ReceiveData",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentTunnelServiceServer).ReceiveData(ctx, req.(*ReceiveDataRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentTunnelService_ServiceDesc is the grpc.ServiceDesc for AgentTunnelService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var AgentTunnelService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "tunnel.AgentTunnelService",
 	HandlerType: (*AgentTunnelServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "SendHello",
+			Handler:    _AgentTunnelService_SendHello_Handler,
+		},
+		{
+			MethodName: "Ping",
+			Handler:    _AgentTunnelService_Ping_Handler,
+		},
+		{
+			MethodName: "SendHeaders",
+			Handler:    _AgentTunnelService_SendHeaders_Handler,
+		},
+		{
+			MethodName: "SendData",
+			Handler:    _AgentTunnelService_SendData_Handler,
+		},
+		{
+			MethodName: "ReceiveHeaders",
+			Handler:    _AgentTunnelService_ReceiveHeaders_Handler,
+		},
+		{
+			MethodName: "ReceiveData",
+			Handler:    _AgentTunnelService_ReceiveData_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "EventTunnel",

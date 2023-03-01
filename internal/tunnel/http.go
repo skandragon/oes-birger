@@ -86,8 +86,8 @@ func makeChunkedResponse(id string, data []byte) *MessageWrapper {
 	return &MessageWrapper{
 		Event: &MessageWrapper_HttpTunnelControl{
 			HttpTunnelControl: &HttpTunnelControl{
-				ControlType: &HttpTunnelControl_HttpTunnelChunkedResponse{
-					HttpTunnelChunkedResponse: &HttpTunnelChunkedResponse{
+				ControlType: &HttpTunnelControl_Data{
+					Data: &Data{
 						Id:   id,
 						Body: data,
 					},
