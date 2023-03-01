@@ -39,7 +39,7 @@ IMAGE_TARGETS = forwarder-controller forwarder-agent forwarder-make-ca
 # actually change.  With the many targets, this is just so much easier,
 # and it also ensures the Docker images have identical timestamp-based tags.
 pb_deps = internal/tunnel/tunnel.pb.go internal/tunnel/tunnel_grpc.pb.go
-all_deps := ${pb_deps} $(shell find app internal -name '*.go' | grep -v _test) Makefile build-tag.sh
+all_deps := ${pb_deps} $(shell find app internal -name '*.go' | grep -v _test) Makefile
 
 now := $(shell date -u +%Y%m%dT%H%M%S)
 
