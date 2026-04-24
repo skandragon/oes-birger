@@ -124,52 +124,6 @@ func (s *CNCServer) authenticate(method string, h http.HandlerFunc) http.Handler
 	}
 }
 
-func (s *CNCServer) generateKubectlComponents() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		w.Header().Set("content-type", "application/json")
-
-		var req fwdapi.KubeConfigRequest
-		err := json.NewDecoder(r.Body).Decode(&req)
-		if err != nil {
-			util.FailRequest(ctx, w, err, http.StatusBadRequest)
-			return
-		}
-
-		err = req.Validate()
-		if err != nil {
-			util.FailRequest(ctx, w, err, http.StatusBadRequest)
-			return
-		}
-
-		token, err := jwtutil.MakeServiceJWT("kubernetes", req.Name, req.AgentName, s.clock)
-		if err != nil {
-			util.FailRequest(ctx, w, err, http.StatusInternalServerError)
-		}
-
-		ret := fwdapi.KubeConfigResponse{
-			AgentName: req.AgentName,
-			Name:      req.Name,
-			ServerURL: s.cfg.GetServiceURL(),
-			Token:     token,
-		}
-		json, err := json.Marshal(ret)
-		if err != nil {
-			util.FailRequest(ctx, w, err, http.StatusBadRequest)
-			return
-		}
-		n, err := w.Write(json)
-		if err != nil {
-			log.Printf("generateKubectlComponents: error while writing: %v", err)
-			return
-		}
-		if n != len(json) {
-			log.Printf("generateKubectlComponents: failed to write entire message: %d of %d written", n, len(json))
-			return
-		}
-	}
-}
-
 func (s *CNCServer) generateAgentManifestComponents() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -360,9 +314,6 @@ func (s *CNCServer) getStatistics() http.HandlerFunc {
 }
 
 func (s *CNCServer) routes(mux *http.ServeMux) {
-	mux.HandleFunc(fwdapi.KubeconfigEndpoint,
-		s.authenticate("POST", s.generateKubectlComponents()))
-
 	mux.HandleFunc(fwdapi.ManifestEndpoint,
 		s.authenticate("POST", s.generateAgentManifestComponents()))
 
