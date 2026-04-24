@@ -38,8 +38,11 @@ Replace the `switch service.Type` block in `ConfigureEndpoints` (lines ~84-96) w
 **`internal/serviceconfig/generic_endpoint.go`**
 Remove `unmutateURI()` (lines ~191-209) and its call site inside `ExecuteHTTPRequest`. No other type-specific branches exist in this file.
 
+**`internal/serviceconfig/generic_endpoint_test.go`**
+Delete `TestGenericEndpoint_unmutateURI_nokey` and `TestGenericEndpoint_unmutateURI_key` (lines ~321-436). They exercise the deleted method and will fail to compile.
+
 **`internal/jwtutil/`**
-Audit for symbols used only by `unmutateURI` (candidates: `MutationIsRegistered`, `UnmutateHeader`, the mutation registry itself). Remove any that become unused after the fiat deletion. If they are used elsewhere, leave alone. Resolve during implementation.
+The mutation registry (`MutationIsRegistered`, `MutateHeader`, `UnmutateHeader`, `RegisterMutationKeyset`, `UnregisterMutationKeyset`) is **still required** — `internal/serviceconfig/headers.go:41-45` and `:61-64` use it for `X-Spinnaker-User` header mutation on the inbound/outbound datapath. Do **not** remove these symbols. The only jwtutil-side cleanup is whatever becomes strictly dead once `unmutateURI` is gone (e.g. test helpers exclusive to fiat tests); verify during implementation.
 
 **`app/server/cncserver/cnc-server.go`**
 - Delete `generateKubectlComponents()` (lines ~127-171).
@@ -53,15 +56,19 @@ Drop tests that exercise the deleted kubectl route and the aws credential shape.
 Remove `KubeConfigRequest`, `KubeConfigResponse`, `AwsCredentialResponse`, and the `KubeconfigEndpoint` route constant.
 
 **`internal/fwdapi/validate.go`**
-Remove any validation wired up for `KubeConfigRequest`.
+- Remove `(*KubeConfigRequest).Validate()` method (lines ~61 onward).
+- Relax `typeValid()` (lines ~32-42) from `^[a-z0-9]+$` to `^[a-z0-9][a-z0-9-]*$` so that free-form types including the documented `x-` prefix convention are accepted by the CNC `/service` API. This is a deliberate change to make the CNC contract match the "free-form string" framing the README will carry post-change; the old regex already rejected `x-foo`, which the README claimed to support.
 
 **`app/get-creds/main.go`**
 - Remove the `kubectl` option from the `action` flag help text.
 - Delete `getKubeconfigCreds()`.
 - Delete the `case "kubectl":` dispatch arm in `main()`.
 
+**`app/server/config.go:189`**
+Rename the log message `"URL returned for kubectl components"` to `"Service URL"` (or equivalent). Cosmetic, but it is the last remaining kubectl-specific string in the server binary.
+
 **`internal/secrets/secrets.go`**
-Earlier scan showed a `kubernetes` reference here. If it is loading the in-pod kube service-account token solely for the deleted kubernetes processor, simplify. If it has other consumers, leave. Resolve during implementation.
+Kept; its `SecretLoader` is used broadly (`internal/serviceconfig/generic_endpoint.go:65-69, 116-154` and both binaries' main). Remove only genuinely kubernetes-exclusive code paths inside — specifically, anything that reads `/var/run/secrets/kubernetes.io/...` or otherwise exists solely to feed the deleted kubernetes endpoint processor. If nothing in this file is kubernetes-exclusive, leave it alone. Verify during implementation.
 
 **`README.md`**
 - Rewrite the "Service Registry" section to state that `type` is a free-form string used for endpoint naming, matching, and annotation-driven UI behavior; no type name has special code-path semantics.
@@ -114,6 +121,7 @@ Step 5 is the only behavioral change point: previously it could route to a kuber
 - Configs with `type: kubernetes` that happen to also provide a valid generic-endpoint config (`url`, credentials) will silently work as a plain HTTP passthrough. This is acceptable: `type` is free-form, and nothing prevents reusing the string.
 - The CNC API loses one route. Existing `get-creds kubectl` invocations will fail with a usage error (the action is removed from the flag help). Callers of the HTTP endpoint directly will get 404.
 - `generateServiceCredentials` with `Type: "aws"` will return the standard basic-auth shape instead of the legacy `{awsAccessKey, awsSecretAccessKey}` shape. Any client that parses the response by the old shape will break. This is intentional per Q2 answer.
+- CNC `/service` requests with a `type` containing `-` (e.g. `x-foo`) currently fail validation; after this change they succeed. This is intended to align the CNC contract with the README's stated support for `x-`-prefixed custom types.
 
 ## Testing
 
@@ -125,9 +133,7 @@ Step 5 is the only behavioral change point: previously it could route to a kuber
 ## Open sub-decisions (to resolve during implementation, not pre-committed here)
 
 1. `httpRequestProcessor` interface (`endpoints.go:40-42`) will have a single implementer after the change. **Default: keep.** It is a useful test seam at near-zero cost. Reverse only if it creates friction.
-2. `jwtutil` mutation registry (`MutationIsRegistered`, `UnmutateHeader`, the registration function): remove iff fiat was the sole caller. Verify with grep during implementation.
-3. `internal/secrets/secrets.go` kubernetes reference: remove iff it was loading kube service-account tokens only for the deleted kubernetes processor. Verify during implementation.
-4. After deletions, `internal/serviceconfig/` may have unused imports / no-longer-needed yaml types. Clean up as the compiler flags them.
+2. After deletions, `internal/serviceconfig/` and `internal/fwdapi/` may have unused imports / no-longer-needed yaml types / unused test helpers. Clean up as the compiler and `golangci-lint` flag them. Do not touch the mutation-registry symbols in `internal/jwtutil/` — they are live via `internal/serviceconfig/headers.go`.
 
 ## Verification plan
 
@@ -136,3 +142,4 @@ Step 5 is the only behavioral change point: previously it could route to a kuber
 3. `make local` builds all three binaries.
 4. `examples/local-deploy/` end-to-end scripts still work (setup → controller → agent → whoami curl recipes).
 5. Grep for `"kubernetes"`, `"kubeconfig"`, `"fiat"`, `"aws"` across `app/` and `internal/` returns only incidental references (e.g. in README prose), not code branches.
+6. Confirm intentional breakage points manually: POST to `fwdapi.KubeconfigEndpoint` on the running CNC server returns 404; POST to `fwdapi.ServiceEndpoint` with `"type":"aws"` returns `credentialType: "basic"`; POST to `fwdapi.ServiceEndpoint` with `"type":"x-foo"` succeeds (validator accepts the hyphen).
