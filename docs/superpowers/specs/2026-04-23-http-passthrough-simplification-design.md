@@ -5,7 +5,7 @@ Status: Draft (awaiting user review)
 
 ## Goal
 
-Simplify oes-birger so that every proxied service is handled as a generic HTTP passthrough. Remove all code paths that branch on a specific service-type name. Preserve the `type` field on `outgoingService` as a free-form identifier so the concept of a service type survives for naming, matching, annotations, and UI purposes.
+Simplify oes-birger so that every proxied service is handled as a generic HTTP passthrough. Remove all code paths that branch on a specific service-type name, and remove Spinnaker-specific header rewriting. Preserve the `type` field on `outgoingService` as a free-form identifier so the concept of a service type survives for naming, matching, annotations, and UI purposes.
 
 ## Non-goals
 
@@ -29,6 +29,8 @@ JWT auth with purposes `agent` and `control` (see `internal/jwtutil/`) is unchan
 | `internal/serviceconfig/kubernetes.go` | Kubernetes-specific endpoint processor. No caller after dispatch switch is removed. |
 | `internal/serviceconfig/kubernetes_test.go` | Tests for the deleted file. |
 | `internal/kubeconfig/` (entire package) | Only consumers are the deleted kubernetes processor and the `KubeconfigEndpoint` in cncserver. |
+| `internal/jwtutil/mutateheaders.go` | JWT-encodes/decodes `X-Spinnaker-User` across the tunnel — Spinnaker-specific header rewriting that violates the "HTTP passthrough only" goal. |
+| `internal/jwtutil/mutateheaders_test.go` | Tests for the deleted file. |
 
 ### In-place modifications
 
@@ -41,8 +43,21 @@ Remove `unmutateURI()` (lines ~191-209) and its call site inside `ExecuteHTTPReq
 **`internal/serviceconfig/generic_endpoint_test.go`**
 Delete `TestGenericEndpoint_unmutateURI_nokey` and `TestGenericEndpoint_unmutateURI_key` (lines ~321-436). They exercise the deleted method and will fail to compile.
 
-**`internal/jwtutil/`**
-The mutation registry (`MutationIsRegistered`, `MutateHeader`, `UnmutateHeader`, `RegisterMutationKeyset`, `UnregisterMutationKeyset`) is **still required** — `internal/serviceconfig/headers.go:41-45` and `:61-64` use it for `X-Spinnaker-User` header mutation on the inbound/outbound datapath. Do **not** remove these symbols. The only jwtutil-side cleanup is whatever becomes strictly dead once `unmutateURI` is gone (e.g. test helpers exclusive to fiat tests); verify during implementation.
+**`internal/serviceconfig/headers.go`**
+- Remove `mutatedHeaders` (line 27) — it is Spinnaker-specific.
+- Remove the `jwtutil.MutationIsRegistered() && containsFolded(mutatedHeaders, …)` branches in `PBHEadersToHTTP` (lines 41-48) and `HTTPHeadersToPB` (lines 61-68). Each function reduces to a plain loop over `header.Values`.
+- **Keep** `strippedOutgoingHeaders = []string{"Authorization"}` and the `!containsFolded(strippedOutgoingHeaders, name)` check (line 69). Stripping the client's inbound `Authorization` before handing the request to the agent-side backend is a generic cross-boundary security measure, not Spinnaker-specific.
+- Remove the `jwtutil` import if no other symbol from that package remains in use here.
+
+**`app/server/config.go`**
+Remove the `HeaderMutationKeyName string` field from `serviceAuthConfig` (line ~59).
+
+**`app/server/main.go`**
+- Remove the `config.ServiceAuth.HeaderMutationKeyName`-missing guard (lines ~173-176) in `loadServiceAuthKeyset`.
+- Remove the `jwtutil.RegisterMutationKeyset(...)` call (line ~293).
+
+**`internal/jwtutil/` (remaining)**
+After `mutateheaders.go` and its test are deleted, verify nothing else references the mutation symbols. The remaining `jwt.go`, `jwt_agent_test.go`, `jwt_control_test.go`, `jwt_service_test.go`, and `jwt_testhelper.go` stay — they handle `agent`, `control`, and `service` purpose JWTs and are unrelated to header mutation.
 
 **`app/server/cncserver/cnc-server.go`**
 - Delete `generateKubectlComponents()` (lines ~127-171).
@@ -74,6 +89,7 @@ Kept; its `SecretLoader` is used broadly (`internal/serviceconfig/generic_endpoi
 - Rewrite the "Service Registry" section to state that `type` is a free-form string used for endpoint naming, matching, and annotation-driven UI behavior; no type name has special code-path semantics.
 - Update the `uiUrl` annotation row in the Annotation Registry: its `Context` column currently reads `service type argocd`. Change this to `any` and rewrite the description to note that interpretation is up to downstream UIs — this repo's code does not read or enforce the annotation.
 - Remove any remaining references to mTLS-to-client auth, kubernetes cert tags, or kubeconfig issuance.
+- Remove any references to `X-Spinnaker-User` header mutation and the `headerMutationKeyName` configuration knob.
 
 **`CLAUDE.md`**
 - Rewrite the "Service routing" paragraph to say: every endpoint dispatches through `GenericEndpoint`; `type` is a free-form string used only for naming/matching. Remove the enumeration of special types.
@@ -122,6 +138,7 @@ Step 5 is the only behavioral change point: previously it could route to a kuber
 - The CNC API loses one route. Existing `get-creds kubectl` invocations will fail with a usage error (the action is removed from the flag help). Callers of the HTTP endpoint directly will get 404.
 - `generateServiceCredentials` with `Type: "aws"` will return the standard basic-auth shape instead of the legacy `{awsAccessKey, awsSecretAccessKey}` shape. Any client that parses the response by the old shape will break. This is intentional per Q2 answer.
 - CNC `/service` requests with a `type` containing `-` (e.g. `x-foo`) currently fail validation; after this change they succeed. This is intended to align the CNC contract with the README's stated support for `x-`-prefixed custom types.
+- Controller configs that set `serviceAuth.headerMutationKeyName` will fail config unmarshal (the field no longer exists). Operators running Spinnaker-fronting deployments must remove this key from their config. Spinnaker setups that relied on `X-Spinnaker-User` JWT-wrapping across the tunnel will no longer receive the wrapped header on the agent side — the header value (if any) is passed through as-is. This is intentional per the "only HTTP passthroughs" directive.
 
 ## Testing
 
@@ -133,7 +150,8 @@ Step 5 is the only behavioral change point: previously it could route to a kuber
 ## Open sub-decisions (to resolve during implementation, not pre-committed here)
 
 1. `httpRequestProcessor` interface (`endpoints.go:40-42`) will have a single implementer after the change. **Default: keep.** It is a useful test seam at near-zero cost. Reverse only if it creates friction.
-2. After deletions, `internal/serviceconfig/` and `internal/fwdapi/` may have unused imports / no-longer-needed yaml types / unused test helpers. Clean up as the compiler and `golangci-lint` flag them. Do not touch the mutation-registry symbols in `internal/jwtutil/` — they are live via `internal/serviceconfig/headers.go`.
+2. After deletions, `internal/serviceconfig/`, `internal/fwdapi/`, and `internal/jwtutil/` may have unused imports / no-longer-needed yaml types / unused test helpers. Clean up as the compiler and `golangci-lint` flag them.
+3. `app/client/` may also reference `HeaderMutationKeyName` or the agent-side header-mutation plumbing. Verify during implementation and remove symmetrically with the controller side if present.
 
 ## Verification plan
 
@@ -143,3 +161,4 @@ Step 5 is the only behavioral change point: previously it could route to a kuber
 4. `examples/local-deploy/` end-to-end scripts still work (setup → controller → agent → whoami curl recipes).
 5. Grep for `"kubernetes"`, `"kubeconfig"`, `"fiat"`, `"aws"` across `app/` and `internal/` returns only incidental references (e.g. in README prose), not code branches.
 6. Confirm intentional breakage points manually: POST to `fwdapi.KubeconfigEndpoint` on the running CNC server returns 404; POST to `fwdapi.ServiceEndpoint` with `"type":"aws"` returns `credentialType: "basic"`; POST to `fwdapi.ServiceEndpoint` with `"type":"x-foo"` succeeds (validator accepts the hyphen).
+7. Confirm a request carrying `X-Spinnaker-User: alice` is forwarded through the tunnel with the header value intact and unmodified (no JWT wrapping on the way out, no unwrapping on the way in).
