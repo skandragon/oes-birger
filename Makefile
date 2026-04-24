@@ -51,6 +51,35 @@ now := $(shell date -u +%Y%m%dT%H%M%S)
 all: ${TARGETS}
 
 #
+# Help target - list the common entry points.
+#
+.PHONY: help
+help:
+	@echo "oes-birger Makefile targets"
+	@echo "==========================="
+	@echo ""
+	@echo "Building:"
+	@echo "  make              - Run tests and build binaries (default)"
+	@echo "  make local        - Build binaries into ./bin"
+	@echo "  make images       - Build and push multi-arch Docker images"
+	@echo ""
+	@echo "Testing / quality:"
+	@echo "  make test         - go test -race ./..."
+	@echo "  make lint         - Run pinned golangci-lint"
+	@echo "  make fmt          - gofmt -s -w ."
+	@echo ""
+	@echo "Code generation:"
+	@echo "  make generate     - Install pinned protoc plugins and regenerate .pb.go"
+	@echo ""
+	@echo "Tool installation (also invoked on demand):"
+	@echo "  ./scripts/install-proto-tools.sh  - protoc-gen-go, protoc-gen-go-grpc"
+	@echo "  ./scripts/install-dev-tools.sh    - golangci-lint"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  make clean        - Remove bin/ and build timestamps"
+	@echo "  make really-clean - Also remove generated .pb.go files"
+
+#
 # make a buildtime directory to hold the build timestamp files
 buildtime:
 	[ ! -d buildtime ] && mkdir buildtime
@@ -63,15 +92,32 @@ set-git-info:
 	@$(eval GIT_HASH=$(shell git rev-parse ${GIT_BRANCH}))
 
 #
-# Common components, like GRPC client code generation.
+# Local development tooling.  Versions are pinned in the install scripts and
+# everything lands in ./bin so builds stay reproducible across machines and CI.
 #
 
-internal/tunnel/tunnel.pb.go: go.mod internal/tunnel/tunnel.proto
-	protoc --go_out=. \
+bin/protoc-gen-go bin/protoc-gen-go-grpc:
+	./scripts/install-proto-tools.sh
+
+bin/golangci-lint:
+	./scripts/install-dev-tools.sh
+
+#
+# Common components, like GRPC client code generation.  The generated files
+# are committed, so CI and plain `make test` never need protoc; only the
+# explicit `make generate` path installs the pinned plugins and regenerates.
+#
+
+.PHONY: generate
+generate: bin/protoc-gen-go bin/protoc-gen-go-grpc
+	PATH="$(CURDIR)/bin:$$PATH" protoc --go_out=. \
 		--go_opt=paths=source_relative \
 		--go-grpc_out=. \
 		--go-grpc_opt=paths=source_relative \
 		internal/tunnel/tunnel.proto
+
+internal/tunnel/tunnel.pb.go: go.mod internal/tunnel/tunnel.proto
+	$(MAKE) generate
 
 #
 # Build locally, mostly for development speed.
@@ -80,11 +126,11 @@ internal/tunnel/tunnel.pb.go: go.mod internal/tunnel/tunnel.proto
 .PHONY: local
 local: $(addprefix bin/,$(BINARIES))
 
-bin/%:: set-git-info ${all_deps}
+$(addprefix bin/,$(BINARIES)): bin/%: set-git-info ${all_deps}
 	@[ -d bin ] || mkdir bin
 	go build -o $@ \
 		-ldflags="-X 'github.com/OpsMx/go-app-base/version.buildType=dev' -X 'github.com/OpsMx/go-app-base/version.gitHash=${GIT_HASH}' -X 'github.com/OpsMx/go-app-base/version.gitBranch=${GIT_BRANCH}'" \
-		app/$(@F)/*.go
+		app/$*/*.go
 
 #
 # Multi-architecture image builds
@@ -118,6 +164,20 @@ image-names:
 .PHONY: test
 test: ${pb_deps}
 	go test -race ./...
+
+#
+# Lint target - uses the pinned golangci-lint from ./bin.
+#
+.PHONY: lint
+lint: bin/golangci-lint
+	./bin/golangci-lint run --timeout 5m ./...
+
+#
+# Format target.
+#
+.PHONY: fmt
+fmt:
+	gofmt -s -w .
 
 #
 # Clean the world.

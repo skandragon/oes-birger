@@ -12,14 +12,15 @@ All development goes through the `Makefile`.
 - `make images` — multi-arch Docker images via `docker buildx` (targets `agent-client-image`, `agent-controller-image` in the `Dockerfile`). Pushes by default.
 - `make clean` / `make really-clean` — the latter also removes generated `tunnel.pb.go` / `tunnel_grpc.pb.go`.
 
-**Protobuf prerequisites** (needed to regenerate stubs):
+**Protobuf prerequisites** — `protoc` itself is a system dependency (`brew install protobuf` / `apt install protobuf-compiler`). The Go plugins (`protoc-gen-go`, `protoc-gen-go-grpc`) are pinned in `scripts/install-proto-tools.sh` and installed into `./bin/` on demand:
 
 ```
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+./scripts/install-proto-tools.sh   # or: make generate
 ```
 
-Stubs live at `internal/tunnel/tunnel.pb.go` and `internal/tunnel/tunnel_grpc.pb.go`; the Makefile rebuilds them from `internal/tunnel/tunnel.proto` when needed. The `make local` / `make test` targets touch these automatically — if you edit the `.proto`, run `make really-clean` to force regeneration.
+Stubs live at `internal/tunnel/tunnel.pb.go` and `internal/tunnel/tunnel_grpc.pb.go` and are committed. Run `make generate` after editing `internal/tunnel/tunnel.proto` to regenerate them (the target installs the pinned plugins first if missing). `make really-clean` removes the stubs if you want to force regeneration.
+
+**Dev tools** — `golangci-lint` is pinned in `scripts/install-dev-tools.sh` and lands in `./bin/`. `make lint` installs it on demand and runs it; CI uses the same path so local and CI agree on the version.
 
 ### Running a single test
 
@@ -27,7 +28,7 @@ Standard Go invocation, e.g. `go test -race -run TestFoo ./internal/serviceconfi
 
 ### Lint
 
-CI runs `golangci-lint` (`.github/workflows/golangci-lint.yml`, `--timeout 5m`). There is no repo-local config; it uses the default ruleset. Run locally with `golangci-lint run ./...`.
+CI runs `make lint` (`.github/workflows/golangci-lint.yml`), which uses the pinned `golangci-lint` from `./bin/` (see `scripts/install-dev-tools.sh`). There is no repo-local config; it uses the default ruleset with `--timeout 5m`. Run locally with `make lint`.
 
 ### Local end-to-end
 
