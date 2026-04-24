@@ -203,17 +203,13 @@ func connect(ctx context.Context, address string, ta credentials.TransportCreden
 	gopts := []grpc.DialOption{
 		grpc.WithTransportCredentials(ta),
 		grpc.WithKeepaliveParams(kparams),
-		grpc.WithBlock(),
-		grpc.WithReturnConnectionError(),
 		grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor),
 	}
 	if config.InsecureControllerConnection {
 		gopts = append(gopts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-	conn, err := grpc.DialContext(ctx, address, gopts...)
+	conn, err := grpc.NewClient(address, gopts...)
 	check(ctx, err)
 
 	return conn
@@ -283,7 +279,7 @@ func getAuthToken(filename string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	token, err := io.ReadAll(f)
 	if err != nil {
 		return "", err
@@ -438,7 +434,7 @@ func main() {
 
 	ta := credentials.NewTLS(tlsConfig)
 	conn := connect(ctx, config.ControllerHostname, ta)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	c := pb.NewTunnelServiceClient(conn)
 
 	hello, err := sendHello(ctx, c, agentInfo, endpoints, hostname, version.VersionString())

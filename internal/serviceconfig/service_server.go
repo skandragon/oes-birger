@@ -163,7 +163,7 @@ func secureAPIHandlerMaker(em EchoManager, routes Destinations, service Incoming
 	return func(w http.ResponseWriter, r *http.Request) {
 		agentIdentity, endpointType, endpointName, err := extractEndpoint(r)
 		if err != nil {
-			r.Body.Close()
+			_ = r.Body.Close()
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -194,7 +194,7 @@ func runAPIHandler(em EchoManager, routes Destinations, ep SearchSpec, w http.Re
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	r.Body.Close()
+	_ = r.Body.Close()
 
 	streamID := ulid.GlobalContext.Ulid()
 	echo := em.MakeRequester(ctx, ep, streamID)
