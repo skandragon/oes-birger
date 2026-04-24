@@ -240,42 +240,12 @@ func MakeServiceCheckFunc() func(*testing.T, []byte) {
 	}
 }
 
-func MakeAWSCheckFunc() func(*testing.T, []byte) {
-	return func(t *testing.T, body []byte) {
-		keyset := jwtutil.LoadTestKeys(t)
-		err := jwtutil.RegisterControlKeyset(keyset, "key1")
-		require.NoError(t, err)
-
-		var response fwdapi.ServiceCredentialResponse
-		err = json.Unmarshal(body, &response)
-		if err != nil {
-			panic(err)
-		}
-		assert.Equal(t, "agent smith", response.AgentName)
-		assert.Equal(t, "service smith", response.Name)
-		assert.Equal(t, "aws", response.Type)
-		assert.Equal(t, "https://service.local", response.URL)
-		assert.Equal(t, "aws", response.CredentialType)
-		creds := response.Credential.(map[string]interface{})
-		if len(creds) != 2 {
-			t.Errorf("Unexpected keys: %#v", creds)
-		}
-		if _, found := creds["awsAccessKey"]; !found {
-			t.Errorf("Credential does not have key 'awsAccessKey': %#v", creds)
-		}
-		if _, found := creds["awsSecretAccessKey"]; !found {
-			t.Errorf("Credential does not have key 'awsSecretAccessKey': %#v", creds)
-		}
-	}
-}
-
 func TestCNCServer_generateServiceCredentials(t *testing.T) {
 	keyset := jwtutil.LoadTestKeys(t)
 	err := jwtutil.RegisterControlKeyset(keyset, "key1")
 	require.NoError(t, err)
 
 	serviceCheckFunc := MakeServiceCheckFunc()
-	awsCheckFunc := MakeAWSCheckFunc()
 
 	tests := []struct {
 		name         string
@@ -303,16 +273,6 @@ func TestCNCServer_generateServiceCredentials(t *testing.T) {
 				Name:      "service smith",
 			},
 			serviceCheckFunc,
-			http.StatusOK,
-		},
-		{
-			"aws",
-			fwdapi.ServiceCredentialRequest{
-				AgentName: "agent smith",
-				Type:      "aws",
-				Name:      "service smith",
-			},
-			awsCheckFunc,
 			http.StatusOK,
 		},
 	}

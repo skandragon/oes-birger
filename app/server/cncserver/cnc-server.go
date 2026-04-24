@@ -209,19 +209,10 @@ func (s *CNCServer) generateServiceCredentials() http.HandlerFunc {
 
 		username := fmt.Sprintf("%s.%s", req.Name, req.AgentName)
 
-		switch req.Type {
-		case "aws":
-			ret.CredentialType = "aws"
-			ret.Credential = fwdapi.AwsCredentialResponse{
-				AwsAccessKey:       username,
-				AwsSecretAccessKey: token,
-			}
-		default:
-			ret.CredentialType = "basic"
-			ret.Credential = fwdapi.BasicCredentialResponse{
-				Username: username,
-				Password: token,
-			}
+		ret.CredentialType = "basic"
+		ret.Credential = fwdapi.BasicCredentialResponse{
+			Username: username,
+			Password: token,
 		}
 		json, err := json.Marshal(ret)
 		if err != nil {
