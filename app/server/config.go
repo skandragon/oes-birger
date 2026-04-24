@@ -55,9 +55,8 @@ type agentConfig struct {
 }
 
 type serviceAuthConfig struct {
-	CurrentKeyName        string `yaml:"currentKeyName,omitempty"`
-	HeaderMutationKeyName string `yaml:"headerMutationKeyName,omitempty"`
-	SecretsPath           string `yaml:"secretsPath,omitempty"`
+	CurrentKeyName string `yaml:"currentKeyName,omitempty"`
+	SecretsPath    string `yaml:"secretsPath,omitempty"`
 }
 
 type agentAuthConfig struct {
@@ -186,7 +185,7 @@ func (c *ControllerConfig) GetControlListenPort() uint16 {
 // Dump will display MOST of the controller's configuration.
 func (c *ControllerConfig) Dump(logger *zap.SugaredLogger) {
 	logger.Infow("Service config", "hostname", *c.ServiceHostname, "port", c.ServiceListenPort)
-	logger.Infow("URL returned for kubectl components", "url", c.GetServiceURL())
+	logger.Infow("Service URL", "url", c.GetServiceURL())
 	logger.Infow("Agent config", "hostname", *c.AgentHostname, "port", c.AgentListenPort, "advertisedPort", c.AgentAdvertisePort)
 	logger.Infow("Control config", "hostname", *c.ControlHostname, "port", c.ControlListenPort)
 }

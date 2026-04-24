@@ -29,10 +29,10 @@ func namePresent(n string) bool {
 	return n != ""
 }
 
-// TypeValid ensures type is valid, that is, lowercase alphanumeric only
+// TypeValid ensures type is a lowercase identifier (alphanumeric plus internal hyphens).
 func typeValid(ctx context.Context, n string) bool {
 	logger := logging.WithContext(ctx).Sugar()
-	matched, err := regexp.MatchString("^[a-z0-9]+$", n)
+	matched, err := regexp.MatchString("^[a-z0-9][a-z0-9-]*$", n)
 	if err != nil {
 		// TODO: handle this better
 		logger.Warnf("matching service type: %v", err)
@@ -53,19 +53,6 @@ func (req *ServiceCredentialRequest) Validate(ctx context.Context) error {
 
 	if !typeValid(ctx, req.Type) {
 		return fmt.Errorf("'type' is invalid")
-	}
-
-	return nil
-}
-
-// Validate ensures that the required fields are set to reasonable values, usually just non-empty strings.
-func (req *KubeConfigRequest) Validate() error {
-	if !namePresent(req.AgentName) {
-		return fmt.Errorf("'agentName' is invalid")
-	}
-
-	if !namePresent(req.Name) {
-		return fmt.Errorf("'name' is invalid")
 	}
 
 	return nil

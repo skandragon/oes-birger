@@ -20,26 +20,11 @@ package fwdapi
 
 // Endpoint paths
 const (
-	KubeconfigEndpoint = "/api/v1/generateKubectlComponents"
 	ManifestEndpoint   = "/api/v1/generateAgentManifestComponents"
 	ServiceEndpoint    = "/api/v1/generateServiceCredentials"
 	StatisticsEndpoint = "/api/v1/getAgentStatistics"
 	ControlEndpoint    = "/api/v1/generateControlCredentials"
 )
-
-// KubeConfigRequest defines the request for the KubeconfigEndpoint
-type KubeConfigRequest struct {
-	AgentName string `json:"agentName,omitempty"`
-	Name      string `json:"name,omitempty"`
-}
-
-// KubeConfigResponse defines the response for the KubeconfigEndpoint
-type KubeConfigResponse struct {
-	AgentName string `json:"agentName,omitempty"`
-	Name      string `json:"name,omitempty"`
-	ServerURL string `json:"serverUrl,omitempty"`
-	Token     string `json:"token,omitempty"`
-}
 
 // ManifestRequest defines the request for the ManifestEndpoint
 type ManifestRequest struct {
@@ -83,12 +68,6 @@ type ServiceCredentialResponse struct {
 type BasicCredentialResponse struct {
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
-}
-
-// AwsCredentialResponse is the "aws access key and secret" configuration.
-type AwsCredentialResponse struct {
-	AwsAccessKey       string `json:"awsAccessKey,omitempty"`
-	AwsSecretAccessKey string `json:"awsSecretAccessKey,omitempty"`
 }
 
 // ControlCredentialsRequest defines the request for the ControlEndpoint

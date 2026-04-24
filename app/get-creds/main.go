@@ -35,7 +35,7 @@ var (
 	endpointName  = flag.String("name", "", "Item name")
 	agentIdentity = flag.String("agent", "", "agent name")
 	endpointType  = flag.String("type", "", "endpoint type")
-	action        = flag.String("action", "", "action, one of: kubectl, agent-manifest, service, or control")
+	action        = flag.String("action", "", "action, one of: agent-manifest, service, or control")
 	showversion   = flag.Bool("version", false, "show the version and exit")
 )
 
@@ -45,7 +45,6 @@ func usage(message string) {
 	}
 	flag.Usage()
 	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "  'kubectl' requires: agent, endpointName.\n")
 	fmt.Fprintf(os.Stderr, "  'service' requires: agent, endpointType, endpointName.\n")
 	fmt.Fprintf(os.Stderr, "  'agent-manifest' requires: agent.\n")
 	fmt.Fprintf(os.Stderr, "  'control' requires no other options.\n")
@@ -72,25 +71,6 @@ func makeClient() *resty.Client {
 	}
 	client.SetAuthToken(token)
 	return client
-}
-
-func getKubeconfigCreds() {
-	request := fwdapi.KubeConfigRequest{
-		AgentName: *agentIdentity,
-		Name:      *endpointName,
-	}
-	client := makeClient()
-	resp, err := client.R().
-		EnableTrace().
-		SetBody(request).
-		Post(fmt.Sprintf("%s%s", *url, fwdapi.KubeconfigEndpoint))
-	if err != nil {
-		fmt.Printf("%v\n", err)
-	}
-	if resp.StatusCode() != 200 {
-		log.Fatalf("Request failed: %s", resp.Status())
-	}
-	fmt.Printf("%s\n", string(resp.Body()))
 }
 
 func getAgentManifest() {
@@ -180,11 +160,6 @@ func main() {
 	}
 
 	switch *action {
-	case "kubectl":
-		insist(agentIdentity, "agent", true)
-		insist(endpointName, "name", true)
-		insist(endpointType, "type", false)
-		getKubeconfigCreds()
 	case "agent-manifest":
 		insist(agentIdentity, "agent", true)
 		insist(endpointName, "name", false)

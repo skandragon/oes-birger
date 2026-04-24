@@ -73,29 +73,12 @@ func ConfigureEndpoints(ctx context.Context, secretsLoader secrets.SecretLoader,
 	// For each service, if it is enabled, find and create an instance.
 	endpoints := []ConfiguredEndpoint{}
 	for _, service := range serviceConfig.OutgoingServices {
-		var instance httpRequestProcessor
-		var configured bool
-
 		if service.Enabled {
 			config, err := yaml.Marshal(service.Config)
 			if err != nil {
 				logger.Fatal(err)
 			}
-			switch service.Type {
-			// TODO: implement kubernetes endpoint again
-			case "kubernetes":
-				if secretsLoader == nil {
-					logger.Fatalf("kuberenetes is disabled, but a kubernetes service is configured.")
-				}
-				instance, configured, err = MakeKubernetesEndpoint(service.Name, config)
-			// TODO: implement aws endpoint again
-			//			case "aws":
-			//				instance, configured, err = MakeAwsEndpoint(service.Name, config, secretsLoader)
-			default:
-				instance, configured, err = MakeGenericEndpoint(ctx, service.Type, service.Name, config, secretsLoader)
-			}
-
-			// If the instance-specific make method returns an error, catch it here.
+			instance, configured, err := MakeGenericEndpoint(ctx, service.Type, service.Name, config, secretsLoader)
 			if err != nil {
 				logger.Fatal(err)
 			}

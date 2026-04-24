@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -128,94 +127,6 @@ func TestCNCServer_authenticate(t *testing.T) {
 			if h.called != tt.want {
 				t.Errorf("CNCServer.authenticate = %v, want %v, error %v", h.called, tt.want, w.Body)
 			}
-		})
-	}
-}
-
-func TestCNCServer_generateKubectlComponents(t *testing.T) {
-	{
-		keyset := jwtutil.LoadTestKeys(t)
-		err := jwtutil.RegisterControlKeyset(keyset, "key1")
-		require.NoError(t, err)
-	}
-	{
-		keyset := jwtutil.LoadTestKeys(t)
-		err := jwtutil.RegisterServiceKeyset(keyset, "key1")
-		require.NoError(t, err)
-	}
-
-	checkFunc := func(t *testing.T, body []byte) {
-
-		var response fwdapi.KubeConfigResponse
-		err := json.Unmarshal(body, &response)
-		if err != nil {
-			log.Printf("body: %s", string(body))
-			panic(err)
-		}
-		assert.Equal(t, "agent smith", response.AgentName)
-		assert.Equal(t, "alice smith", response.Name)
-		assert.Equal(t, "https://service.local", response.ServerURL)
-		assert.Equal(t, "eyJhbGciOiJIUzI1NiIsImtpZCI6ImtleTEiLCJ0eXAiOiJKV1QifQ.eyJhIjoiYWdlbnQgc21pdGgiLCJpYXQiOjEyMzQsImlzcyI6Im9wc214IiwibiI6ImFsaWNlIHNtaXRoIiwib3BzbXgucHVycG9zZSI6InNlcnZpY2UiLCJ0Ijoia3ViZXJuZXRlcyJ9.qAYKWyP9Rocpay5VNkZYNs4ShL3ktG7oxJQkUlYHCTg", response.Token)
-	}
-
-	tests := []struct {
-		name         string
-		request      interface{}
-		validateBody verifierFunc
-		wantStatus   int
-	}{
-		{
-			"badJSON",
-			"badjson",
-			requireError("json: cannot unmarshal"),
-			http.StatusBadRequest,
-		},
-		{
-			"missingName",
-			fwdapi.KubeConfigRequest{},
-			requireError(" is invalid"),
-			http.StatusBadRequest,
-		},
-		{
-			"working",
-			fwdapi.KubeConfigRequest{
-				AgentName: "agent smith",
-				Name:      "alice smith",
-			},
-			checkFunc,
-			http.StatusOK,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := MakeCNCServer(&mockConfig{}, nil, "", "", testclock)
-
-			body, err := json.Marshal(tt.request)
-			if err != nil {
-				panic(err)
-			}
-
-			r := httptest.NewRequest("POST", "https://localhost/foo", bytes.NewReader(body))
-			r.Header.Set("authorization", "Bearer "+goodJWT)
-			w := httptest.NewRecorder()
-			h := c.generateKubectlComponents()
-			h.ServeHTTP(w, r)
-
-			if w.Result().StatusCode != tt.wantStatus {
-				t.Errorf("Expected status code %d, got %d", tt.wantStatus, w.Code)
-			}
-
-			ct := w.Result().Header.Get("content-type")
-			if ct != "application/json" {
-				t.Errorf("Expected content-type to be application/json, not %s", ct)
-			}
-
-			resultBody, err := io.ReadAll(w.Result().Body)
-			if err != nil {
-				panic(err)
-			}
-
-			tt.validateBody(t, resultBody)
 		})
 	}
 }
@@ -329,42 +240,12 @@ func MakeServiceCheckFunc() func(*testing.T, []byte) {
 	}
 }
 
-func MakeAWSCheckFunc() func(*testing.T, []byte) {
-	return func(t *testing.T, body []byte) {
-		keyset := jwtutil.LoadTestKeys(t)
-		err := jwtutil.RegisterControlKeyset(keyset, "key1")
-		require.NoError(t, err)
-
-		var response fwdapi.ServiceCredentialResponse
-		err = json.Unmarshal(body, &response)
-		if err != nil {
-			panic(err)
-		}
-		assert.Equal(t, "agent smith", response.AgentName)
-		assert.Equal(t, "service smith", response.Name)
-		assert.Equal(t, "aws", response.Type)
-		assert.Equal(t, "https://service.local", response.URL)
-		assert.Equal(t, "aws", response.CredentialType)
-		creds := response.Credential.(map[string]interface{})
-		if len(creds) != 2 {
-			t.Errorf("Unexpected keys: %#v", creds)
-		}
-		if _, found := creds["awsAccessKey"]; !found {
-			t.Errorf("Credential does not have key 'awsAccessKey': %#v", creds)
-		}
-		if _, found := creds["awsSecretAccessKey"]; !found {
-			t.Errorf("Credential does not have key 'awsSecretAccessKey': %#v", creds)
-		}
-	}
-}
-
 func TestCNCServer_generateServiceCredentials(t *testing.T) {
 	keyset := jwtutil.LoadTestKeys(t)
 	err := jwtutil.RegisterControlKeyset(keyset, "key1")
 	require.NoError(t, err)
 
 	serviceCheckFunc := MakeServiceCheckFunc()
-	awsCheckFunc := MakeAWSCheckFunc()
 
 	tests := []struct {
 		name         string
@@ -392,16 +273,6 @@ func TestCNCServer_generateServiceCredentials(t *testing.T) {
 				Name:      "service smith",
 			},
 			serviceCheckFunc,
-			http.StatusOK,
-		},
-		{
-			"aws",
-			fwdapi.ServiceCredentialRequest{
-				AgentName: "agent smith",
-				Type:      "aws",
-				Name:      "service smith",
-			},
-			awsCheckFunc,
 			http.StatusOK,
 		},
 	}
