@@ -21,63 +21,42 @@ central software which needs to reach into a customer's cloud in some
 secure way.  VPNs could be used, which requires out of band configuration
 and likely more complexity and teams.
 
-Birger allows an agent to be run in a Kubernetes cluster, configured
-with security tokens for various services.  Access to these services
-are provided to the controller, which can be contacted in a secure
-way to access the agent-provided services.
-
-The credentials used by the agent to contact services (kubernetes, jenkins,
-etc) are never provided to the controller.  This allows secure, customer
-regulated access to internal services and changing credentials as needed.
+Birger runs an agent alongside the services to be exposed, configured
+with the credentials those services expect.  The agent dials out to a
+controller; clients contact the controller, which forwards HTTP requests
+back to the agent, which in turn calls the local service.  Credentials
+used by the agent never leave the customer side.
 
 ## Using the Services
 
 The controller has a HTTPS port open which accepts service requests.
-These may be a controller-CA provided certificate, or a controller-provided
-JWT token in an `Authentication` header.  For Kubernetes, certificates
-are used, while for other HTTP-based services, the Bearer or Basic auth method
-and the JWT token should be used.
-
-# Kubernetes Service
-
-This implements a service where, by running an agent inside a Kubernetes
-cluster, API calls can still be sent to it even if the cluster is
-behind a firewall.
-
-The purpose of this is to allow reaching into a Kubernetes cluster which is
-behind a firewall in a secure, authenticated way.
-
-From the client's (Spinnaker) point of view, it is talking to a standard
-Kubernetes endpoint, using a custom certificate authority, user certificate,
-and server endpoint.  This endpoint is actually the controller, which uses
-the user cert to know which agent to send the API request to.
+Clients authenticate with a controller-issued JWT carried as a Bearer
+token in the `Authorization` header, or as a basic-auth password — both
+are accepted.
 
 Streaming (aka, "watch") requests are supported.  Data is sent back from
-an API request in a streaming fasion in all cases.  Multiple simulaneous
+an API request in a streaming fashion in all cases.  Multiple simultaneous
 API calls are supported.
 
 # Components
 
-There are two main compoments:  a "controller" and an "agent".  The controller
-runs somewhere a client (such as kubectl) can reach, and the client is pointed
-to the controller using a user certificate and a CA cert to authenticate the
-controller.  The controller then, based on the server name used in the request,
-forwards to a connected agent, which uses its own credentials to connect to a
-Kubernetes cluster.
+There are two main components: a "controller" and an "agent".  The
+controller runs somewhere a client can reach it, and the client is
+pointed at the controller using a CA cert to verify the controller's
+TLS certificate.  The controller then, based on the server name used in
+the request and the JWT claims, forwards the request to a connected
+agent, which uses its own credentials to call the local service.
 
 The "agent" connects to a "controller" (which lives outside the firewall,
-likely colocated with a CI/CD system such as Spinnaker) which allows access
-to the agent's cluster, based on service account and other permissions granted
-to the agent.
+likely colocated with a CI/CD system) which allows access to the agent's
+local services, based on permissions granted to the agent.
 
 Running more than one agent with the same name is supported.  If more than
-one agent with the same name is connected, they are all sent requests, where
-the specific agent is chosen at random.
+one agent with the same name is connected, they all receive requests, with
+the specific agent chosen at random per request.
 
-Currently only one remote cluster is targeted by an agent, although
-multiple namespaces can be managed.  The agent itself is very small, and
-as it uses a small alpine Linux base image with few additional packages,
-has a very small security footprint.
+The agent is very small, and as it uses a small alpine Linux base image
+with few additional packages, has a very small security footprint.
 
 # Prerequisites
 
@@ -95,31 +74,27 @@ See the examples in the `examples/local-deploy` directory.
 
 # Certificates
 
-There is a binary called `make-ca` which will generate a new certificate authority,
-and an initial "control" client key.  These keys and certificates are created in
-the Kubernetes secret YAML format.
+There is a binary called `make-ca` which will generate a new certificate
+authority, and an initial "control" client key.  These keys and
+certificates are created in the Kubernetes secret YAML format.
 
-The CA key and certificate will be used by the controller to generate a
-server certificate on startup with all the defined server names it may be using.
-It will also use this to generate additional keys for control,
-kubernetes API requests, and agents on request.
+The CA key and certificate are used by the controller to generate its
+own server certificate on startup with all the defined server names.
+Client authentication to the controller is JWT-based — the CNC API
+issues `agent`, `service`, and `control` purpose JWTs (see `get-creds`).
 
-The certificates issued by the controller's built-in CA have a specific tag which
-describes the endpoint type when connecting.  This is required.
+# Service types
 
-# Service Registry
+The `type` field on an `outgoingService` is a free-form lowercase
+identifier (matching `^[a-z0-9][a-z0-9-]*$`).  It names the endpoint
+for routing and appears in logs and downstream UIs.  No type name has
+special code-path semantics — every endpoint is dispatched as a generic
+HTTP passthrough.  Configure credentials (`basic`, `bearer`, `token`,
+or `none`) under the `credentials` block on each service.
 
-| Service Type | Support Level | Location | Description |
-| --- | --- | --- | --- |
-| argocd | Full | Agent | Provides access to an ArgoCD instance.  Only Bearer Tokens are supported for authentication against a local Argo user. |
-| aws | Partial | Agent | AWS API |
-| clouddriver | Full | Agent | Spinnaker Cloud Driver API.  Special handling of the HTTP messages. |
-| front50 | Full | Controller | Spinnaker Front50 API.  Special handling of the HTTP messages. |
-| fiat | Full | Controller | Spinnaker Fiat API. Special handling of the HTTP messages. |
-| jenkins | Full | Either | Jenkins CI API |
-| kuberetes | Full | Agent | Kubernetes API endpoint |
-
-Types not listed here should not be used.  Local or custom types (without any special handling needed, just usual HTTP protocol proxy) can be named with a `x-` prefix, such as `x-my-api`.
+Operators commonly use descriptive labels such as `jenkins`, `argocd`,
+`clouddriver`, or custom labels like `x-my-api`, but these are
+conventions, not required names.
 
 # Annotations
 
@@ -135,4 +110,4 @@ meaning.
 | Name | Context | Description |
 | --- | --- | --- |
 | description | any | A description of this object, perhaps to be displayed in the UI and log messages. |
-| uiUrl | service type argocd | In the ISD UI, this will be used to display a direct link to the argocd instance.  This will be displayed exactly as-is in the user's browser, so it should be whatever name users would normally use to reach this instance. If this is blank, no UI link will be provided. |
+| uiUrl | any | A URL used by downstream UIs to link to the underlying service.  This repository's code does not read or enforce the annotation; interpretation is up to the UI. |
