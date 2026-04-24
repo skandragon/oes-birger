@@ -28,8 +28,6 @@ import (
 	"time"
 
 	"github.com/OpsMx/go-app-base/httputil"
-	"github.com/lestrrat-go/jwx/v2/jwt"
-	"github.com/opsmx/oes-birger/internal/jwtutil"
 	"github.com/opsmx/oes-birger/internal/logging"
 	"github.com/opsmx/oes-birger/internal/secrets"
 	pb "github.com/opsmx/oes-birger/internal/tunnel"
@@ -188,26 +186,6 @@ func MakeGenericEndpoint(ctx context.Context, endpointType string, endpointName 
 	return ep, true, nil
 }
 
-func (ep *GenericEndpoint) unmutateURI(typ string, method string, uri string, clock jwt.Clock) (unmutatedURI string, err error) {
-	if typ != "fiat" {
-		return uri, nil
-	}
-	if method != http.MethodGet {
-		return uri, nil
-	}
-	if !jwtutil.MutationIsRegistered() {
-		return uri, nil
-	}
-	parts := strings.Split(uri, "/")
-	if len(parts) >= 3 && parts[1] == "authorize" {
-		if parts[2], err = jwtutil.UnmutateHeader([]byte(parts[2]), clock); err != nil {
-			return "", err
-		}
-		return strings.Join(parts, "/"), nil
-	}
-	return uri, nil
-}
-
 // ExecuteHTTPRequest does the actual call to connect to HTTP, and will send the data back over the
 // tunnel.
 func (ep *GenericEndpoint) ExecuteHTTPRequest(ctx context.Context, agentName string, echo Echo, req *pb.TunnelRequest) error {
@@ -228,17 +206,10 @@ func (ep *GenericEndpoint) ExecuteHTTPRequest(ctx context.Context, agentName str
 		Transport: tr,
 	}
 
-	uri, err := ep.unmutateURI(req.Type, req.Method, req.URI, nil)
-	if err != nil {
-		err = fmt.Errorf("failed to unmutate URI %s to %s: %v", req.Method, ep.config.URL+req.URI, err)
-		logger.Error(err)
-		return echo.Fail(ctx, http.StatusBadGateway, err)
-	}
-
 	ctx, cancel := context.WithCancel(ctx)
-	httpRequest, err := http.NewRequestWithContext(ctx, req.Method, ep.config.URL+uri, bytes.NewBuffer(req.Body))
+	httpRequest, err := http.NewRequestWithContext(ctx, req.Method, ep.config.URL+req.URI, bytes.NewBuffer(req.Body))
 	if err != nil {
-		err = fmt.Errorf("failed to build request for %s to %s: %v", req.Method, ep.config.URL+uri, err)
+		err = fmt.Errorf("failed to build request for %s to %s: %v", req.Method, ep.config.URL+req.URI, err)
 		logger.Error(err)
 		cancel()
 		return echo.Fail(ctx, http.StatusBadGateway, err)
