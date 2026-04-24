@@ -230,7 +230,7 @@ func (ep *GenericEndpoint) ExecuteHTTPRequest(ctx context.Context, agentName str
 
 	uri, err := ep.unmutateURI(req.Type, req.Method, req.URI, nil)
 	if err != nil {
-		err = fmt.Errorf("Failed to unmutate URI %s to %s: %v", req.Method, ep.config.URL+req.URI, err)
+		err = fmt.Errorf("failed to unmutate URI %s to %s: %v", req.Method, ep.config.URL+req.URI, err)
 		logger.Error(err)
 		return echo.Fail(ctx, http.StatusBadGateway, err)
 	}
@@ -238,7 +238,7 @@ func (ep *GenericEndpoint) ExecuteHTTPRequest(ctx context.Context, agentName str
 	ctx, cancel := context.WithCancel(ctx)
 	httpRequest, err := http.NewRequestWithContext(ctx, req.Method, ep.config.URL+uri, bytes.NewBuffer(req.Body))
 	if err != nil {
-		err = fmt.Errorf("Failed to build request for %s to %s: %v", req.Method, ep.config.URL+uri, err)
+		err = fmt.Errorf("failed to build request for %s to %s: %v", req.Method, ep.config.URL+uri, err)
 		logger.Error(err)
 		cancel()
 		return echo.Fail(ctx, http.StatusBadGateway, err)
@@ -317,12 +317,12 @@ func RunHTTPRequest(ctx context.Context, cancel context.CancelFunc, client *http
 		}
 		return
 	}
-	defer httpResponse.Body.Close()
+	defer func() { _ = httpResponse.Body.Close() }()
 
 	// First, send the headers.
 	response, err := makeResponse(req.StreamId, httpResponse)
 	if err != nil {
-		err = fmt.Errorf("Failed to unmutate headers: %v", err)
+		err = fmt.Errorf("failed to unmutate headers: %v", err)
 		logger.Warn(err)
 		if err2 := echo.Fail(ctx, http.StatusBadGateway, err); err2 != nil {
 			logger.Warn(err2)
@@ -368,7 +368,7 @@ func RunHTTPRequest(ctx context.Context, cancel context.CancelFunc, client *http
 			return
 		}
 		if err != nil {
-			err = fmt.Errorf("Got error on HTTP read: %v", err)
+			err = fmt.Errorf("got error on HTTP read: %v", err)
 			logger.Warn(err)
 			if err2 := echo.Fail(ctx, http.StatusBadGateway, err); err2 != nil {
 				logger.Warn(err2)

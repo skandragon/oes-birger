@@ -18,6 +18,7 @@ package serviceconfig
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -32,7 +33,6 @@ import (
 	"github.com/opsmx/oes-birger/internal/logging"
 	pb "github.com/opsmx/oes-birger/internal/tunnel"
 	"go.uber.org/zap"
-	"golang.org/x/net/context"
 	"gopkg.in/yaml.v3"
 )
 
@@ -244,7 +244,7 @@ func (ke *KubernetesEndpoint) ExecuteHTTPRequest(ctx context.Context, _ string, 
 	ctx, cancel := context.WithCancel(context.Background())
 	httpRequest, err := http.NewRequestWithContext(ctx, req.Method, c.serverURL+req.URI, bytes.NewBuffer(req.Body))
 	if err != nil {
-		err = fmt.Errorf("Failed to build request for %s to %s: %v", req.Method, c.serverURL+req.URI, err)
+		err = fmt.Errorf("failed to build request for %s to %s: %v", req.Method, c.serverURL+req.URI, err)
 		logger.Error(err)
 		cancel()
 		return echo.Fail(ctx, http.StatusBadGateway, err)
