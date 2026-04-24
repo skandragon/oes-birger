@@ -1,4 +1,15 @@
-# OpsMX API Forwarder
+# Birger API Forwarder
+
+> **Fork notice.** This repository is a community fork of the former
+> `opsmx/oes-birger` project, which was originally published under the
+> Apache License 2.0 by OpsMx, Inc. and is no longer available upstream.
+> This fork is maintained independently and is diverging from the
+> original: expect behavior, configuration, module path, and image
+> names to change over time. Pre-existing OpsMx copyright notices are
+> preserved in accordance with Apache-2.0; new contributions are
+> copyright their respective authors. "OpsMx", "Spinnaker", and
+> related product names are trademarks of their respective owners and
+> are referenced here only descriptively.
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/opsmx/oes-birger)](https://goreportcard.com/report/github.com/opsmx/oes-birger)
 
