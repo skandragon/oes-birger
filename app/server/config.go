@@ -55,9 +55,8 @@ type agentConfig struct {
 }
 
 type serviceAuthConfig struct {
-	CurrentKeyName        string `yaml:"currentKeyName,omitempty"`
-	HeaderMutationKeyName string `yaml:"headerMutationKeyName,omitempty"`
-	SecretsPath           string `yaml:"secretsPath,omitempty"`
+	CurrentKeyName string `yaml:"currentKeyName,omitempty"`
+	SecretsPath    string `yaml:"secretsPath,omitempty"`
 }
 
 type agentAuthConfig struct {

@@ -170,10 +170,6 @@ func loadServiceAuthKeyset(ctx context.Context) {
 		logger.Fatal("serviceAuth.currentKeyName is not in the loaded list of keys")
 	}
 
-	if len(config.ServiceAuth.HeaderMutationKeyName) == 0 {
-		logger.Fatal("serviceAuth.headerMutationKeyName is not set")
-	}
-
 	logger.Infof("Loaded %d serviceAuth keys", serviceKeyset.Len())
 }
 
@@ -281,16 +277,12 @@ func main() {
 	loadServiceAuthKeyset(ctx)
 	loadAgentAuthKeyset(ctx)
 
-	// Create registry entries to sign and validate JWTs for service authentication,
-	// and protect x-spinnaker-user header.
+	// Create registry entries to sign and validate JWTs for service authentication.
 	if err = jwtutil.RegisterServiceKeyset(serviceKeyset, config.ServiceAuth.CurrentKeyName); err != nil {
 		logger.Fatal(err)
 	}
 	// TODO: use a different keyset?
 	if err = jwtutil.RegisterControlKeyset(serviceKeyset, config.ServiceAuth.CurrentKeyName); err != nil {
-		logger.Fatal(err)
-	}
-	if err = jwtutil.RegisterMutationKeyset(serviceKeyset, config.ServiceAuth.HeaderMutationKeyName); err != nil {
 		logger.Fatal(err)
 	}
 	if err = jwtutil.RegisterAgentKeyset(agentKeyset, config.AgentAuth.CurrentKeyName); err != nil {
