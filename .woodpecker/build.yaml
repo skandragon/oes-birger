@@ -1,0 +1,41 @@
+when:
+  - event: push
+    branch: main
+
+steps:
+  - name: build
+    image: golang:1.26
+    commands:
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/agent-client ./app/client
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/agent-controller ./app/server
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/get-creds ./app/get-creds
+
+  - name: publish-agent-client
+    image: woodpeckerci/plugin-docker-buildx
+    settings:
+      repo: docker.flame.org/library/agent-client
+      registry: docker.flame.org
+      dockerfile: Dockerfile.agent-client.ci
+      tags: latest
+      platforms: linux/amd64
+      ipv6: true
+      buildkit_driveropt: network=host
+      username:
+        from_secret: docker_flame_org_username
+      password:
+        from_secret: docker_flame_org_password
+
+  - name: publish-agent-controller
+    image: woodpeckerci/plugin-docker-buildx
+    settings:
+      repo: docker.flame.org/library/agent-controller
+      registry: docker.flame.org
+      dockerfile: Dockerfile.agent-controller.ci
+      tags: latest
+      platforms: linux/amd64
+      ipv6: true
+      buildkit_driveropt: network=host
+      username:
+        from_secret: docker_flame_org_username
+      password:
+        from_secret: docker_flame_org_password
