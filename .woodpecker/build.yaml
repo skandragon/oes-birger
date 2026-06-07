@@ -16,6 +16,13 @@ steps:
     # goreleaser + go prebaked; auto-refreshes daily.
     image: docker.flame.org/library/woodpecker-builder:stable
     pull: true
+    # Shared, Argo-managed RWX Go caches (content-addressed, concurrency-safe).
+    volumes:
+      - ci-gomodcache:/cache/gomod      # GOMODCACHE
+      - ci-gobuildcache:/cache/go-build # GOCACHE (warms the cross-compile)
+    environment:
+      GOMODCACHE: /cache/gomod
+      GOCACHE: /cache/go-build
     commands:
       - git config --global --add safe.directory '*'
       - go version && goreleaser --version
