@@ -1,5 +1,5 @@
 #
-# Copyright 2026 OpsMx, Inc.
+# Copyright 2021-2026 OpsMx, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License")
 # you may not use this file except in compliance with the License.
@@ -13,8 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# Copy-only multi-arch assembly. Compiles NOTHING per-arch: the binaries are
+# cross-built on the amd64 worker (.woodpecker/build.yaml) and staged into
+# docker/bin/linux_${TARGETARCH}/, so the only emulated arm64 work is the tiny
+# apk layer. Context is trimmed to docker/ by the matching .dockerignore.
+#
+# The agent-client binary (get-creds) is bundled so the controller can serve it
+# to auto-update remote agents.
 
 FROM alpine:3
+ARG TARGETARCH
 
 RUN apk update && apk upgrade --no-cache && apk add --no-cache ca-certificates curl
 RUN update-ca-certificates ; exit 0
@@ -22,8 +30,8 @@ RUN mkdir /local /local/ca-certificates && rm -rf /usr/local/share/ca-certificat
 
 WORKDIR /app
 COPY docker/run.sh /app/run.sh
-COPY dist/agent-controller /app/agent-controller
-COPY dist/get-creds /app/get-creds
+COPY docker/bin/linux_${TARGETARCH}/agent-controller /app/agent-controller
+COPY docker/bin/linux_${TARGETARCH}/get-creds /app/get-creds
 
 EXPOSE 9001-9002 9102
 

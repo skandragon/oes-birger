@@ -1,20 +1,41 @@
+# Woodpecker release image build: cross-compile both arches on the amd64 worker
+# with goreleaser, then assemble + push the multi-arch images on the shared
+# kubepi0 buildkitd (ns buildkit) over kube-pod://. Runs on v* tags only.
+#
+# Engine (otel-collector pattern): the binaries are pure Go (CGO_ENABLED=0), so
+# goreleaser cross-builds amd64+arm64 natively on one node -- no QEMU. The
+# Dockerfile.cross.* assembly compiles nothing per-arch (copy-only), so the only
+# emulated arm64 work is a tiny apk layer, warm-cached on kubepi0. FROM pulls go
+# through the zot cache.
 when:
-  - event: push
-    branch: main
+  - event: tag
+    ref: refs/tags/v*
 
 steps:
-  - name: build
-    image: golang:1.26
+  - name: build-binary
+    # goreleaser + go prebaked; auto-refreshes daily.
+    image: docker.flame.org/library/woodpecker-builder:stable
+    pull: true
     commands:
-      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/agent-client ./app/client
-      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/agent-controller ./app/server
-      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/get-creds ./app/get-creds
+      - git config --global --add safe.directory '*'
+      - go version && goreleaser --version
+      # Version stamping: GIT_BRANCH = the v* tag, GIT_HASH = the commit.
+      - export GIT_BRANCH="$$CI_COMMIT_TAG"
+      - export GIT_HASH="$$CI_COMMIT_SHA"
+      - echo "building $$GIT_BRANCH ($$GIT_HASH)"
+      # Cross-build all three binaries for both arches (no QEMU, no CGO).
+      - goreleaser build --snapshot --clean --config .goreleaser.cross.yaml
+      # Stage per-arch binaries where the Dockerfile.cross.* files COPY them.
+      - |
+        for arch in amd64 arm64; do
+          mkdir -p docker/bin/linux_$$arch
+          cp dist/agent-client_linux_$${arch}*/agent-client         docker/bin/linux_$$arch/agent-client
+          cp dist/agent-controller_linux_$${arch}*/agent-controller docker/bin/linux_$$arch/agent-controller
+          cp dist/get-creds_linux_$${arch}*/get-creds               docker/bin/linux_$$arch/get-creds
+        done
+      - ls -l docker/bin/linux_amd64 docker/bin/linux_arm64
 
   - name: publish-agent-client
-    # Build on the shared kubepi0 buildkitd (ns buildkit) over kube-pod://, so
-    # FROM pulls go through the zot cache and reuse the warm layer cache. The
-    # shared builder image already bakes in buildctl + a pinned, sha256-verified
-    # kubectl (kube-pod:// connhelper shells out to `kubectl exec`) and curl/jq.
     image: docker.flame.org/library/woodpecker-builder:stable
     pull: true
     backend_options:
@@ -39,16 +60,16 @@ steps:
           "$$APISERVER/api/v1/namespaces/buildkit/pods?labelSelector=app%3Dkubepi0" \
           | jq -r '.items[] | select(.status.phase=="Running") | .metadata.name' | head -n1)
         echo "$$POD" > .bk-pod
-      # build Dockerfile.agent-client.ci on kubepi0 and push to Harbor
+      # assemble Dockerfile.cross.agent-client on kubepi0 and push the 2-arch index
       - |
         buildctl --addr "kube-pod://$$(cat .bk-pod)?namespace=buildkit" \
           build \
           --frontend dockerfile.v0 \
           --local context=. \
           --local dockerfile=. \
-          --opt filename=Dockerfile.agent-client.ci \
-          --opt platform=linux/amd64 \
-          --output type=image,name=docker.flame.org/library/agent-client:latest,push=true
+          --opt filename=Dockerfile.cross.agent-client \
+          --opt platform=linux/amd64,linux/arm64 \
+          --output type=image,\"name=docker.flame.org/library/agent-client:$${CI_COMMIT_TAG},docker.flame.org/library/agent-client:latest\",push=true
 
   - name: publish-agent-controller
     image: docker.flame.org/library/woodpecker-builder:stable
@@ -75,13 +96,13 @@ steps:
           "$$APISERVER/api/v1/namespaces/buildkit/pods?labelSelector=app%3Dkubepi0" \
           | jq -r '.items[] | select(.status.phase=="Running") | .metadata.name' | head -n1)
         echo "$$POD" > .bk-pod
-      # build Dockerfile.agent-controller.ci on kubepi0 and push to Harbor
+      # assemble Dockerfile.cross.agent-controller on kubepi0 and push the 2-arch index
       - |
         buildctl --addr "kube-pod://$$(cat .bk-pod)?namespace=buildkit" \
           build \
           --frontend dockerfile.v0 \
           --local context=. \
           --local dockerfile=. \
-          --opt filename=Dockerfile.agent-controller.ci \
-          --opt platform=linux/amd64 \
-          --output type=image,name=docker.flame.org/library/agent-controller:latest,push=true
+          --opt filename=Dockerfile.cross.agent-controller \
+          --opt platform=linux/amd64,linux/arm64 \
+          --output type=image,\"name=docker.flame.org/library/agent-controller:$${CI_COMMIT_TAG},docker.flame.org/library/agent-controller:latest\",push=true
