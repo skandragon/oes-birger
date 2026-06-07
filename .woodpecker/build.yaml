@@ -11,31 +11,77 @@ steps:
       - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/get-creds ./app/get-creds
 
   - name: publish-agent-client
-    image: woodpeckerci/plugin-docker-buildx
-    settings:
-      repo: docker.flame.org/library/agent-client
-      registry: docker.flame.org
-      dockerfile: Dockerfile.agent-client.ci
-      tags: latest
-      platforms: linux/amd64
-      ipv6: true
-      buildkit_driveropt: network=host
-      username:
+    # Build on the shared kubepi0 buildkitd (ns buildkit) over kube-pod://, so
+    # FROM pulls go through the zot cache and reuse the warm layer cache. The
+    # shared builder image already bakes in buildctl + a pinned, sha256-verified
+    # kubectl (kube-pod:// connhelper shells out to `kubectl exec`) and curl/jq.
+    image: docker.flame.org/library/woodpecker-builder:stable
+    pull: true
+    backend_options:
+      kubernetes:
+        serviceAccountName: buildkit-client
+    environment:
+      FLAME_USER:
         from_secret: docker_flame_org_username
-      password:
+      FLAME_PASS:
         from_secret: docker_flame_org_password
+    commands:
+      # registry auth for the push (buildctl reads DOCKER_CONFIG)
+      - |
+        mkdir -p /root/.docker
+        auth=$$(printf '%s:%s' "$${FLAME_USER}" "$${FLAME_PASS}" | base64 | tr -d '\n')
+        printf '{"auths":{"docker.flame.org":{"auth":"%s"}}}' "$$auth" > /root/.docker/config.json
+      # resolve the running kubepi0 pod (kube-pod:// needs a concrete pod)
+      - |
+        APISERVER=https://kubernetes.default.svc
+        SA=/var/run/secrets/kubernetes.io/serviceaccount
+        POD=$$(curl -fsSL --cacert $$SA/ca.crt -H "Authorization: Bearer $$(cat $$SA/token)" \
+          "$$APISERVER/api/v1/namespaces/buildkit/pods?labelSelector=app%3Dkubepi0" \
+          | jq -r '.items[] | select(.status.phase=="Running") | .metadata.name' | head -n1)
+        echo "$$POD" > .bk-pod
+      # build Dockerfile.agent-client.ci on kubepi0 and push to Harbor
+      - |
+        buildctl --addr "kube-pod://$$(cat .bk-pod)?namespace=buildkit" \
+          build \
+          --frontend dockerfile.v0 \
+          --local context=. \
+          --local dockerfile=. \
+          --opt filename=Dockerfile.agent-client.ci \
+          --opt platform=linux/amd64 \
+          --output type=image,name=docker.flame.org/library/agent-client:latest,push=true
 
   - name: publish-agent-controller
-    image: woodpeckerci/plugin-docker-buildx
-    settings:
-      repo: docker.flame.org/library/agent-controller
-      registry: docker.flame.org
-      dockerfile: Dockerfile.agent-controller.ci
-      tags: latest
-      platforms: linux/amd64
-      ipv6: true
-      buildkit_driveropt: network=host
-      username:
+    image: docker.flame.org/library/woodpecker-builder:stable
+    pull: true
+    backend_options:
+      kubernetes:
+        serviceAccountName: buildkit-client
+    environment:
+      FLAME_USER:
         from_secret: docker_flame_org_username
-      password:
+      FLAME_PASS:
         from_secret: docker_flame_org_password
+    commands:
+      # registry auth for the push (buildctl reads DOCKER_CONFIG)
+      - |
+        mkdir -p /root/.docker
+        auth=$$(printf '%s:%s' "$${FLAME_USER}" "$${FLAME_PASS}" | base64 | tr -d '\n')
+        printf '{"auths":{"docker.flame.org":{"auth":"%s"}}}' "$$auth" > /root/.docker/config.json
+      # resolve the running kubepi0 pod (kube-pod:// needs a concrete pod)
+      - |
+        APISERVER=https://kubernetes.default.svc
+        SA=/var/run/secrets/kubernetes.io/serviceaccount
+        POD=$$(curl -fsSL --cacert $$SA/ca.crt -H "Authorization: Bearer $$(cat $$SA/token)" \
+          "$$APISERVER/api/v1/namespaces/buildkit/pods?labelSelector=app%3Dkubepi0" \
+          | jq -r '.items[] | select(.status.phase=="Running") | .metadata.name' | head -n1)
+        echo "$$POD" > .bk-pod
+      # build Dockerfile.agent-controller.ci on kubepi0 and push to Harbor
+      - |
+        buildctl --addr "kube-pod://$$(cat .bk-pod)?namespace=buildkit" \
+          build \
+          --frontend dockerfile.v0 \
+          --local context=. \
+          --local dockerfile=. \
+          --opt filename=Dockerfile.agent-controller.ci \
+          --opt platform=linux/amd64 \
+          --output type=image,name=docker.flame.org/library/agent-controller:latest,push=true
