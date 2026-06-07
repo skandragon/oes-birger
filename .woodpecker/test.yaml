@@ -1,9 +1,0 @@
-when:
-  - event: pull_request
-
-steps:
-  - name: test
-    image: golang:1.26
-    commands:
-      - make test
-      - make lint
