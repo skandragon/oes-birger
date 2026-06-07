@@ -1,0 +1,5 @@
+# Context shipped to the remote kubepi0 buildkitd is only the prebuilt per-arch
+# binaries + docker/run.sh. Everything else (source tree, goreleaser dist/, etc.)
+# is excluded so the kube-pod:// context stream stays small.
+*
+!docker

@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
       - name: opsmx-agent-jan51300-opsmx-agent
-        image: quay.io/opsmxpublic/agent-client:v5.0.0
+        image: docker.flame.org/library/agent-client:v5.0.0
         volumeMounts:
         - name: config
           mountPath: /app/config/config.yaml

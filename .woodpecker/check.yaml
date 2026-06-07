@@ -1,0 +1,36 @@
+# Lint + test on every push and PR (moved from GitHub Actions). No secrets, so
+# pull_request is safe here. golang:1.26 is pulled through the zot cache.
+#
+# Durable shared caches (ci-gomodcache, ci-gobuildcache) are the SHARED,
+# Argo-managed RWX cephfs PVCs multi-mounted by every repo's pipeline. GOCACHE is
+# the real lever -- overlapping dep compiles under the same golang image are hits
+# across repos; both caches are content-addressed and concurrency-safe.
+when:
+  - event: [push, pull_request]
+
+steps:
+  - name: test
+    image: golang:1.26
+    volumes:
+      - ci-gomodcache:/cache/gomod      # GOMODCACHE
+      - ci-gobuildcache:/cache/go-build # GOCACHE
+    environment:
+      GOMODCACHE: /cache/gomod
+      GOCACHE: /cache/go-build
+    commands:
+      # Committed protobuf stubs are authoritative; touch them so make doesn't try
+      # to regenerate (which needs protoc, not present here) -- mirrors Dockerfile.
+      - touch internal/tunnel/tunnel.pb.go internal/tunnel/tunnel_grpc.pb.go
+      - make test
+
+  - name: lint
+    image: golang:1.26
+    volumes:
+      - ci-gomodcache:/cache/gomod
+      - ci-gobuildcache:/cache/go-build # GOCACHE also warms golangci-lint's type-check
+    environment:
+      GOMODCACHE: /cache/gomod
+      GOCACHE: /cache/go-build
+    commands:
+      - touch internal/tunnel/tunnel.pb.go internal/tunnel/tunnel_grpc.pb.go
+      - make lint

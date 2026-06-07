@@ -21,7 +21,7 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: metadata.namespace
-        image: quay.io/opsmxpublic/agent-controller:v5.0.0
+        image: docker.flame.org/library/agent-controller:v5.0.0
         imagePullPolicy: IfNotPresent
         name: opsmx-controller-controller1
         ports:
